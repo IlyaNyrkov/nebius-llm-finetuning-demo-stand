@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: llm-lora-finetune
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: trainer
+          image: pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              pip install -q transformers datasets peft trl bitsandbytes boto3 accelerate
+              python /workspace/train_lora.py
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: nebius-storage-creds
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nebius-storage-creds
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: S3_BUCKET_NAME
+              value: "mlops-artifacts-bucket"
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - name: script-volume
+              mountPath: /workspace/train_lora.py
+              subPath: train_lora.py
+            - name: dshm
+              mountPath: /dev/shm
+      volumes:
+        - name: script-volume
+          configMap:
+            name: lora-training-script
+        - name: dshm
+          emptyDir:
+            medium: Memory

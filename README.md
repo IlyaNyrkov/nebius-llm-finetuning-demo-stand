@@ -48,7 +48,9 @@ This reference architecture provides a unified control and data plane:
 │   ├── s3-storage.tf
 │   ├── terraform.tf
 │   ├── providers.tf
-└── k8s-manifests/
+└── k8s/
+    ├── training/
+    └── app/
 ```
 
 ---
@@ -150,12 +152,12 @@ kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=vllm --timeout=
 Send a prompt to the base model (`meta-llama/Llama-3.1-8B-Instruct` or `Qwen/Qwen2.5-Coder-7B-Instruct`) without adapter modification:
 
 ```bash
-INGRESS_IP=$(kubectl get ingress vllm-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+INGRESS_IP=$(kubectl get svc vllm-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
 curl -s http://${INGRESS_IP}/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "base",
+    "model": "Qwen/Qwen2.5-Coder-7B-Instruct",
     "messages": [
       {"role": "user", "content": "How do I query all active users from a database?"}
     ],

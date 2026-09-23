@@ -1,7 +1,7 @@
 variable "project_id" {
   description = "Nebius project ID where resources will be created"
   type        = string
-  default     = "project-e00a9ggbpr00wnj4k8dp7h"
+  default     = "project-e01mmpmepr00aqjvn0xdx7"
 }
 
 variable "ssh_public_key" {

@@ -14,7 +14,7 @@ resource "nebius_mk8s_v1_node_group" "cpu-small" {
   name      = "cpu-small"
   parent_id = nebius_mk8s_v1_cluster.mlops_stand_k8s.id
 
-  fixed_node_count = 2
+  fixed_node_count = 1
 
   template = {
     resources = {
@@ -26,7 +26,7 @@ resource "nebius_mk8s_v1_node_group" "cpu-small" {
 
     boot_disk = {
       type           = "NETWORK_SSD"
-      size_gibibytes = 64
+      size_gibibytes = 100
     }
 
     network_interfaces = [

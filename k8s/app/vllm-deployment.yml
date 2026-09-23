@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-qwen
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm
+  template:
+    metadata:
+      labels:
+        app: vllm
+    spec:
+      initContainers:
+        - name: sync-lora-adapter
+          image: amazon/aws-cli:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              aws s3 sync s3://$S3_BUCKET_NAME/adapters/sql-expert-lora /data/lora/sql-expert-lora \
+                --endpoint-url https://storage.eu-west1.nebius.cloud --region eu-west1
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: nebius-storage-creds
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nebius-storage-creds
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: S3_BUCKET_NAME
+              value: "mlops-artifacts-bucket" 
+          volumeMounts:
+            - name: lora-adapters
+              mountPath: /data/lora
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:latest
+          args:
+            - "--model"
+            - "Qwen/Qwen2.5-Coder-7B-Instruct"
+            - "--max-model-len"
+            - "8192"
+            - "--enable-lora"
+            - "--lora-modules"
+            - "sql-expert-lora=/data/lora/sql-expert-lora"
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+            - name: huggingface-cache
+              mountPath: /root/.cache/huggingface
+            - name: lora-adapters
+              mountPath: /data/lora
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+        - name: huggingface-cache
+          emptyDir: {}
+        - name: lora-adapters
+          emptyDir: {}

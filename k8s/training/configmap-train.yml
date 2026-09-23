@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lora-training-script
+data:
+  train_lora.py: |
+    import os
+    import boto3
+    import torch
+    from datasets import load_dataset
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+    from peft import LoraConfig, get_peft_model
+    from trl import SFTTrainer, SFTConfig
+
+    MODEL_ID = "Qwen/Qwen2.5-Coder-7B-Instruct"
+    DATASET_ID = "b-mc2/sql-create-context"
+    BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
+    S3_PREFIX = "adapters/sql-expert-lora"
+    LOCAL_OUTPUT_DIR = "./sql-expert-lora"
+
+    print("Step 1: Loading and formatting dataset...")
+    dataset = load_dataset(DATASET_ID, split="train[:5000]")
+
+    def format_chat(example):
+        return {
+            "messages": [
+                {"role": "system", "content": "You are a SQL expert. Write the correct SQL query based on the provided table schema and question."},
+                {"role": "user", "content": f"Schema: {example['context']}\nQuestion: {example['question']}"},
+                {"role": "assistant", "content": example['answer']}
+            ]
+        }
+
+    dataset = dataset.map(format_chat, remove_columns=dataset.column_names)
+    dataset = dataset.train_test_split(test_size=0.1)
+
+    print("Step 2: Loading Model and Tokenizer (QLoRA)...")
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+    tokenizer.pad_token = tokenizer.eos_token
+
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16
+    )
+
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_ID,
+        quantization_config=bnb_config,
+        device_map="auto"
+    )
+
+    peft_config = LoraConfig(
+        r=16,
+        lora_alpha=32,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        lora_dropout=0.05,
+        bias="none",
+        task_type="CAUSAL_LM"
+    )
+
+    print("Step 3: Initializing SFTTrainer...")
+    training_args = SFTConfig(
+        output_dir=LOCAL_OUTPUT_DIR,
+        per_device_train_batch_size=4,
+        gradient_accumulation_steps=4,
+        learning_rate=2e-4,
+        num_train_epochs=1,
+        logging_steps=10,
+        save_strategy="no",
+        fp16=False,
+        bf16=True,
+        max_length=512
+    )
+
+    trainer = SFTTrainer(
+        model=model,
+        train_dataset=dataset["train"],
+        eval_dataset=dataset["test"],
+        peft_config=peft_config,
+        args=training_args,
+        processing_class=tokenizer
+    )
+
+    print("Step 4: Starting Training...")
+    trainer.train()
+
+    print("Step 5: Saving Adapter Locally...")
+    trainer.model.save_pretrained(LOCAL_OUTPUT_DIR)
+    tokenizer.save_pretrained(LOCAL_OUTPUT_DIR)
+
+    print("Step 6: Uploading to Nebius Object Storage...")
+    s3 = boto3.client(
+        "s3",
+        endpoint_url="https://storage.eu-west1.nebius.cloud",
+        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY")
+    )
+
+    for root, _, files in os.walk(LOCAL_OUTPUT_DIR):
+        for file in files:
+            local_path = os.path.join(root, file)
+            s3_key = os.path.join(S3_PREFIX, os.path.relpath(local_path, LOCAL_OUTPUT_DIR))
+            print(f"Uploading {local_path} to s3://{BUCKET_NAME}/{s3_key}")
+            s3.upload_file(local_path, BUCKET_NAME, s3_key)
+
+    print("Pipeline Complete! Adapter successfully pushed to S3.")
