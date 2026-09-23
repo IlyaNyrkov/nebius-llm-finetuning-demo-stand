@@ -29,9 +29,13 @@ This reference architecture provides a unified control and data plane:
 
 ---
 
-## 2. Architecture
+## 2. Architecture and quota/resource requirements
 
 ![](docs/architecture.png)
+
+- Kubernetes cluster: 1 node GPU (minimum configuration H100/H200/L40S), 1 node CPU only 2CPU-8RAM-100GB
+- S3 Bucket with 100MB minimum (or unlimited)
+- Managed MLFLOW instance
 
 ## 3. Tech stack
 
