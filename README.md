@@ -29,15 +29,15 @@ This reference architecture provides a unified control and data plane:
 
 ---
 
-## 2. Architecture Topology
+## 2. Architecture
 
 ![](docs/architecture.png)
 
-Base model: Qwen2.5-Coder (https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct)
+## 3. Tech stack
 
-Dataset (SQL code): (https://huggingface.co/datasets/b-mc2/sql-create-context)
+![](docs/techstack.png)
 
-## 3. Repository Structure
+## 4. Repository Structure
 
 ```text
 ├── docs/
@@ -53,7 +53,7 @@ Dataset (SQL code): (https://huggingface.co/datasets/b-mc2/sql-create-context)
 
 ---
 
-## 4. Deployment Prerequisites
+## 5. Deployment Prerequisites
 
 * **Nebius CLI:** Installed and authenticated (`nebius auth login`).
 * **Terraform:** `>= 1.5.0`.
@@ -62,7 +62,7 @@ Dataset (SQL code): (https://huggingface.co/datasets/b-mc2/sql-create-context)
 
 ---
 
-## 5. Step-by-Step Installation
+## 6. Step-by-Step Installation
 
 ### Step 1: Provision Infrastructure via Terraform
 
