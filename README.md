@@ -1,29 +1,13 @@
 # Nebius AI Cloud MLOps Reference Architecture: Multi-Adapter LoRA Serving with vLLM
 
-An end-to-end, declarative MLOps reference architecture and demo stand deployed entirely via Terraform on Nebius AI Cloud. This architecture addresses multi-tenant LLM serving economics by combining Kubernetes for scheduling jobs, Nebius Managed MLflow experiment tracking, and dynamic multi-adapter serving via vLLM on NVIDIA L40S GPUs.
+An end-to-end, declarative MLOps reference architecture and demo stand deployed entirely via Terraform on Nebius AI Cloud. This architecture addresses multi-tenant LLM serving economics by combining Kubernetes for scheduling jobs, Self-Hosted MLflow on MK8s experiment tracking, and dynamic multi-adapter serving via vLLM on NVIDIA L40S GPUs.
 
 ---
 
-## 1. Business Problem & Architectural Rationale
+## 1. Project Overview
 
-### The Enterprise Challenge
+This reference architecture provisions an automated, production-ready MLOps platform on Nebius AI Cloud designed for multi-tenant Large Language Model serving. The platform executes automated QLoRA batch fine-tuning jobs on NVIDIA L40S GPUs and serves the resulting adapters via a unified vLLM inference engine capable of dynamic, zero-downtime LoRA swapping via HTTP request headers. By decoupling base model weights from task-specific parameter deltas, the architecture eliminates dedicated cluster sprawl, reduces inference GPU costs, and centralizes experiment tracking and observability across the lifecycle. The entire stack - Nebius Managed Kubernetes (MK8s), VPC networking, S3 Object Storage, self-hosted MLflow tracking backed by PostgreSQL, Prometheus Operator, and Grafana performance dashboards—is provisioned and managed declaratively via Terraform and Kubernetes manifests.
 
-Enterprise platform teams frequently face severe cost inefficiency when operationalizing specialized language models for coding across multiple business units or enterprise tenants:
-
-* **Dedicated Deployment Scatter:** Hosting dedicated base models (e.g., Llama 3.1 8B or Mistral 7B) for each fine-tuned domain variant results in inneficcient usage of GPUs.
-* **Operational Overhead:** Deploying and lifecycle-managing distinct MLflow servers, relational metadata databases and storage connectors across ephemeral compute clusters introduces significant operational debt and configuration drift.
-
-### The Solution
-
-This reference architecture provides a unified control and data plane:
-
-1. **Dynamic Multi-LoRA Multiplexing:** A single vLLM inference engine loads a base foundation model into GPU VRAM once, while dynamically loading and swapping fine-tuned LoRA adapters (<100 MB each) in real time based on request headers. E.g. separate adapters for SQL code and python code.
-
-
-2. **Managed Platform State:** Experiment tracking, metric visualization, and model registry artifacts are offloaded to **Nebius Managed MLflow**, cleanly decoupling state and metrics from ephemeral worker nodes.
-
-
-3. **Zero-ClickOps Automation:** The entire topology-VPC, subnets, Object Storage buckets, Managed Kubernetes (MK8s), node auto-scalers, and service accounts-is provisioned deterministically with Terraform in under 20 minutes.
 
 ---
 
@@ -73,15 +57,34 @@ Clone the repository and initialize the Terraform state:
 
 ```bash
 git clone https://github.com/IlyaNyrkov/nebius-llm-finetuning-demo-stand.git
-cd nebius-llm-finetuning-demo-stand/terraform
+cd nebius-llm-finetuning-demo-stand
 ```
 
+Set nebius access token to use terraform.
 ```bash
 export NEBIUS_IAM_TOKEN=$(nebius iam get-access-token)
 ```
 
+Initialize terraform
+
+```bash
+cd terraform
+```
+
 ```bash
 terraform init
+```
+
+Before applying, check availability of CPU models and GPU models in your region in Web UI or using cli command. Any CPU and GPU model will work.
+
+```bash
+# tenant_ID is one level higher than project_ID
+nebius capacity resource-advice list --parent-id <tenant_ID>
+```
+
+In case if it is not available specify other values in terraform/
+
+```bash
 terraform apply --auto-approve
 ```
 
@@ -183,7 +186,7 @@ http://<EXTERNAL_IP>:5000
 
 ### Step 5: Execute Batch Fine-Tuning Job
 
-Trigger the PyTorch LoRA fine-tuning Job on the GPU node pool. The Job pulls the training dataset slice, runs PEFT, streams loss/eval curves to Managed MLflow, and saves the adapter weights:
+Trigger the PyTorch LoRA fine-tuning Job on the GPU node pool. The Job pulls the training dataset slice, runs PEFT, streams loss/eval curves to MLflow, and saves the adapter weights:
 
 ```bash
 kubectl apply -k k8s/training/overlays/sql-expert
@@ -218,7 +221,7 @@ kubectl apply -f k8s/vllm-service-monitor.yml
 ```
 ---
 
-## 6. Live Demonstration Walkthrough
+## 7. Live Demonstration Walkthrough
 
 ### 1. Verification of Base Model Inference
 
@@ -266,10 +269,10 @@ curl -s http://${INGRESS_IP}/v1/chat/completions \
 
 ### 3. Observability & Tracking Metrics
 
-* **Nebius Managed MLflow UI:** . Review training epochs, training loss vs. evaluation loss, and the registered adapter artifact lineage.
+* **MLflow UI:** . Review training epochs, training loss vs. evaluation loss, and the registered adapter artifact lineage.
 
 
-* **vLLM Metrics:** View Prometheus metrics on the vLLM service in Grafana using dafana_dashboards folder:
+* **vLLM Metrics:** View Prometheus metrics on the vLLM service in Grafana using grafana_dashboards folder:
     * concurrency_queue_depth.json
     * kv_cache_usage.json
     * p95_end_to_end_latency.json
@@ -305,7 +308,7 @@ To run the script
 
 ---
 
-## 7. Clean-Up & Cost Governance
+## 8. Clean-Up & Cost Governance
 
 ### 1. Delete Prometheus and Grafana applications in Web UI if installed
 
@@ -315,10 +318,15 @@ To run the script
 
 ### 2. Delete kubernetes workloads (optional)
 ```bash
-kubectl delete -f ../k8s/training/job-finetune.yaml --ignore-not-found
-helm uninstall vllm-engine --namespace=default
+kubectl delete -k k8s/training/overlays/sql_expert
+```
+
+```bash
+kubectl delete -f k8s/app
+```
 
 ### 3. Delete Cloud infrastructure
+```bash
 cd ../terraform
 terraform destroy -auto-approve
 ```
