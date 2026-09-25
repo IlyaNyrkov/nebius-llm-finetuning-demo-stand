@@ -24,13 +24,6 @@ resource "nebius_vpc_v1_network" "mlops_stand_net" {
   }
 }
 
-resource "nebius_vpc_v1_security_group" "default_secgroup" {
-  name = "default_secgroup"
-  parent_id  = var.project_id
-  network_id = nebius_vpc_v1_network.mlops_stand_net.id
-  
-}
-
 resource "nebius_vpc_v1_subnet" "mlops_stand_subnet" {
   name       = "mlops_stand_subnet"
   parent_id  = var.project_id
@@ -38,5 +31,39 @@ resource "nebius_vpc_v1_subnet" "mlops_stand_subnet" {
 
   ipv4_private_pools = {
     use_network_pools = true
+  }
+}
+
+resource "nebius_vpc_v1_security_group" "default_secgroup" {
+  name       = "default_secgroup"
+  parent_id  = var.project_id
+  network_id = nebius_vpc_v1_network.mlops_stand_net.id
+}
+
+resource "nebius_vpc_v1_security_rule" "allow_all_ingress" {
+  name      = "allow-all-ingress"
+  parent_id = nebius_vpc_v1_security_group.default_secgroup.id
+  access    = "ALLOW"
+  protocol  = "ANY"
+  type      = "STATELESS"
+  priority  = 500
+
+  ingress = {
+    source_cidrs      = []
+    destination_ports = []
+  }
+}
+
+resource "nebius_vpc_v1_security_rule" "allow_all_egress" {
+  name      = "allow-all-egress"
+  parent_id = nebius_vpc_v1_security_group.default_secgroup.id
+  access    = "ALLOW"
+  protocol  = "ANY"
+  type      = "STATELESS"
+  priority  = 500
+
+  egress = {
+    destination_cidrs = []
+    destination_ports = []
   }
 }

@@ -1,34 +1,46 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: lora-training-script
-data:
-  train_lora.py: |
-    import os
-    import boto3
-    import torch
-    from datasets import load_dataset
-    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-    from peft import LoraConfig, get_peft_model
-    from trl import SFTTrainer, SFTConfig
 
-    MODEL_ID = "Qwen/Qwen2.5-Coder-7B-Instruct"
-    DATASET_ID = "b-mc2/sql-create-context"
-    BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
-    S3_PREFIX = "adapters/sql-expert-lora"
-    LOCAL_OUTPUT_DIR = "./sql-expert-lora"
+import os
+import boto3
+import torch
+import mlflow
+mlflow.enable_system_metrics_logging()
+
+from datasets import load_dataset
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from peft import LoraConfig, get_peft_model
+from trl import SFTTrainer, SFTConfig
+
+def format_chat(example):
+    return {
+        "messages": [
+            {"role": "system", "content": "You are a SQL expert. Write the correct SQL query based on the provided table schema and question."},
+            {"role": "user", "content": f"Schema: {example['context']}\nQuestion: {example['question']}"},
+            {"role": "assistant", "content": example['answer']}
+        ]
+    }
+
+# if mlflow deployed on local k8s where experiment is run
+MLFLOW_TRACKING_URI = "http://mlflow.monitoring.svc.cluster.local:5000"
+MLFLOW_EXPERIMENT_NAME = "SQL-Expert-LoRA-FineTuning-v2"
+
+MODEL_ID = "Qwen/Qwen2.5-Coder-7B-Instruct"
+DATASET_ID = "b-mc2/sql-create-context"
+BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
+S3_PREFIX = "adapters/sql-expert-lora"
+LOCAL_OUTPUT_DIR = "./sql-expert-lora"
+
+
+if __name__ == "__main__":
+    print("Step 0: Setting up mlflow experiment: ", MLFLOW_EXPERIMENT_NAME)
+    print("MLFLOW Tracking URI: ", MLFLOW_TRACKING_URI)
+
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
+
 
     print("Step 1: Loading and formatting dataset...")
     dataset = load_dataset(DATASET_ID, split="train[:5000]")
 
-    def format_chat(example):
-        return {
-            "messages": [
-                {"role": "system", "content": "You are a SQL expert. Write the correct SQL query based on the provided table schema and question."},
-                {"role": "user", "content": f"Schema: {example['context']}\nQuestion: {example['question']}"},
-                {"role": "assistant", "content": example['answer']}
-            ]
-        }
 
     dataset = dataset.map(format_chat, remove_columns=dataset.column_names)
     dataset = dataset.train_test_split(test_size=0.1)
@@ -69,7 +81,8 @@ data:
         save_strategy="no",
         fp16=False,
         bf16=True,
-        max_length=512
+        max_length=512,
+        report_to="mlflow"
     )
 
     trainer = SFTTrainer(
@@ -82,13 +95,22 @@ data:
     )
 
     print("Step 4: Starting Training...")
-    trainer.train()
+    with mlflow.start_run() as run:
+        run_id = run.info.run_id
+        print(f"Active MLflow Run ID: {run_id}")
+        trainer.train()
+
 
     print("Step 5: Saving Adapter Locally...")
     trainer.model.save_pretrained(LOCAL_OUTPUT_DIR)
     tokenizer.save_pretrained(LOCAL_OUTPUT_DIR)
 
-    print("Step 6: Uploading to Nebius Object Storage...")
+
+    print("Step 6: Archiving Artifacts to MLflow...")
+    mlflow.log_artifacts(LOCAL_OUTPUT_DIR, artifact_path="sql_adapter")
+
+
+    print("Step 7: Updating vLLM Production Pointer in S3...")
     s3 = boto3.client(
         "s3",
         endpoint_url="https://storage.eu-west1.nebius.cloud",
@@ -103,4 +125,4 @@ data:
             print(f"Uploading {local_path} to s3://{BUCKET_NAME}/{s3_key}")
             s3.upload_file(local_path, BUCKET_NAME, s3_key)
 
-    print("Pipeline Complete! Adapter successfully pushed to S3.")
+    print("Pipeline Complete!")

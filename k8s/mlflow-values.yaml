@@ -1,0 +1,29 @@
+service:
+  type: LoadBalancer
+  port: 5000
+
+backendStore:
+  postgres:
+    enabled: true
+    host: "mlflow-db-postgresql.monitoring.svc.cluster.local"
+    port: 5432
+    database: "mlflow"
+    user: "mlflow"
+    password: "mlflow123"
+
+artifactRoot:
+  proxiedArtifactStorage: true
+  defaultArtifactRoot: "s3://mlops-artifacts-bucket/mlflow"
+  s3:
+    enabled: true
+    bucket: "mlops-artifacts-bucket"
+
+extraEnvVars:
+  AWS_DEFAULT_REGION: "eu-west1"
+  MLFLOW_S3_ENDPOINT_URL: "https://storage.eu-west1.nebius.cloud"
+  MLFLOW_SERVER_ALLOWED_HOSTS: "*"
+  MLFLOW_SERVER_CORS_ALLOWED_ORIGINS: "http://66.201.5.138:5000"
+
+extraSecretNamesForEnvFrom:
+  - nebius-storage-creds
+  

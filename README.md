@@ -105,8 +105,8 @@ Sync storage credentials to the cluster so training pods and vLLM can access Neb
 
 ```bash
 kubectl create secret generic nebius-storage-creds \
-  --from-literal=aws_access_key_id=$(terraform output -raw storage_access_key) \
-  --from-literal=aws_secret_access_key=$(terraform output -raw storage_secret_key) \
+  --from-literal=AWS_ACCESS_KEY_ID=$(terraform output -raw storage_access_key_id) \
+  --from-literal=AWS_SECRET_ACCESS_KEY=$(terraform output -raw storage_secret_key) \
   --namespace=default
 
 ```
@@ -116,12 +116,10 @@ kubectl create secret generic nebius-storage-creds \
 Trigger the PyTorch LoRA fine-tuning Job on the GPU node pool. The Job pulls the training dataset slice, runs PEFT, streams loss/eval curves to Managed MLflow, and saves the adapter weights:
 
 ```bash
-kubectl apply -f ../k8s/training/configmap-train.yaml
-kubectl apply -f ../k8s/training/job-finetune.yaml
+kubectl apply -k k8s/training/overlays/sql-expert
 
 # Follow training logs in real time
-kubectl logs -f job/llm-lora-finetune -c trainer
-
+kubectl logs -f jobs/llm-lora-finetune-sql-expert -c trainer
 ```
 
 ### Step 4: Deploy vLLM Multi-Adapter Serving Engine
@@ -147,6 +145,46 @@ kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=vllm --timeout=
 
 ```
 
+### Step 4: Deploy Mlfow in Kubernetes
+
+Add bitnami helm repository
+
+```bash
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+```
+
+Install PostgreSQL into the monitoring namespace
+
+```bash
+helm install mlflow-db bitnami/postgresql \
+  --namespace monitoring \
+  --set auth.username=mlflow \
+  --set auth.password=mlflow123 \
+  --set auth.database=mlflow \
+  --set primary.persistence.size=10Gi
+```
+
+install MLflow using k8s/mlflow-values.yml configuration 
+
+```bash
+helm repo add community-charts https://community-charts.github.io/helm-charts
+helm repo update
+
+helm install mlflow community-charts/mlflow \
+  --namespace monitoring \
+  -f k8s/mlflow-values.yaml
+```
+
+Mlflow ui can be accessed via service ip
+
+```bash
+kubectl get svc mlflow -n monitoring
+```
+
+```bash
+http://<EXTERNAL_IP>:5000
+```
 ---
 
 ## 6. Live Demonstration Walkthrough
@@ -204,8 +242,6 @@ curl -s http://${INGRESS_IP}/v1/chat/completions \
 * `vllm:num_requests_running`: Real-time request concurrency.
 * `vllm:gpu_cache_usage_factor`: KV cache VRAM utilization.
 * `vllm:time_to_first_token_seconds`: Pre-fill and dynamic adapter lookup latency.
-
-
 
 ---
 

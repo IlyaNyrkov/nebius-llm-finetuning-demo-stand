@@ -1,0 +1,14 @@
+resources:
+  - ../../base
+
+nameSuffix: -sql-expert 
+
+configMapGenerator:
+  - name: training-script
+    files:
+      # Maps local file to the exact filename expected by the Job's volume mount
+      - train.py=train_sql.py
+
+generatorOptions:
+  # Prevents Kustomize from appending a random hash to the ConfigMap name
+  disableNameSuffixHash: true

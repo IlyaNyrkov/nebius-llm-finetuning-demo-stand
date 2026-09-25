@@ -13,8 +13,8 @@ spec:
           command: ["/bin/bash", "-c"]
           args:
             - |
-              pip install -q transformers datasets peft trl bitsandbytes boto3 accelerate
-              python /workspace/train_lora.py
+              pip install -q transformers datasets peft trl bitsandbytes boto3 accelerate mlflow psutil pynvml
+              python /workspace/train.py
           env:
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
@@ -33,14 +33,14 @@ spec:
               nvidia.com/gpu: 1
           volumeMounts:
             - name: script-volume
-              mountPath: /workspace/train_lora.py
-              subPath: train_lora.py
+              mountPath: /workspace/train.py
+              subPath: train.py
             - name: dshm
               mountPath: /dev/shm
       volumes:
         - name: script-volume
           configMap:
-            name: lora-training-script
+            name: training-script
         - name: dshm
           emptyDir:
             medium: Memory
