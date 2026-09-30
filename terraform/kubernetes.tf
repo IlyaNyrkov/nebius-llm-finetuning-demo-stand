@@ -62,19 +62,19 @@ resource "nebius_mk8s_v1_node_group" "gpu_l40s" {
 
   template = {
     resources = {
-      platform = "gpu-l40s-a"       # Specify other model if L40s is not available
-      preset   = "1gpu-8vcpu-32gb"  # smallest preset: 1 GPU, 8 vCPU, 32 GiB RAM
+      platform = "gpu-h200-sxm"       # Specify other model if L40s is not available
+      preset   = "1gpu-16vcpu-200gb"  # smallest preset: 1 GPU, 8 vCPU, 32 GiB RAM
     }
 
     gpu_settings = {
-      drivers_preset = "cuda13"     # preinstalled NVIDIA drivers
+      drivers_preset = "cuda13.0"     # preinstalled NVIDIA drivers
     }
 
     os = "ubuntu24.04"
 
     boot_disk = {
       type           = "NETWORK_SSD"
-      size_gibibytes = 100
+      size_gibibytes = 279
     }
 
     network_interfaces = [

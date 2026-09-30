@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Target the public IP of  vllm-service
-VLLM_IP="66.201.4.188"
+VLLM_IP="66.201.7.98"
 TOTAL_BATCHES=100
 CONCURRENCY=20
 

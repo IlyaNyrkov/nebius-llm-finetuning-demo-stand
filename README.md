@@ -25,17 +25,34 @@ This reference architecture provisions an automated, production-ready MLOps plat
 ## 4. Repository Structure
 
 ```text
-├── docs/
-│   └── architecture.png 
-├── terraform/
-│   ├── network.tf                   
-|   ├── kubernetes.tf
-│   ├── s3-storage.tf
-│   ├── terraform.tf
-│   ├── providers.tf
-└── k8s/
-    ├── training/
-    └── app/
+├── docs/                           # Architecture diagram and tech stack graphics
+├── grafana_dashboards/             # Exported JSON files for vLLM performance telemetry
+│   ├── concurrency_queue_depth.json
+│   ├── kv_cache_usage.json
+│   ├── p95_end_to_end_latency.json
+│   └── token_throughput.json
+├── k8s/                            # Kubernetes deployment manifests
+│   ├── app/                        # vLLM inference engine configuration
+│   │   ├── vllm-deployment.yml     # StatefulSet/Deployment for serving engine and S3 InitContainer
+│   │   └── vllm-lb-service.yml     # LoadBalancer configuration for external HTTP access
+│   ├── training/                   # MLOps pipeline jobs
+│   │   ├── base/
+│   │   │   ├── job-finetune.yml    # PyTorch QLoRA training job definition
+│   │   │   └── kustomization.yml   # Base Kustomize configuration
+│   │   └── overlays/sql-expert/
+│   │       ├── kustomization.yml   # ConfigMap generator injecting train_lora.py into the pod
+│   │       └── train_lora.py       # TRL/PEFT fine-tuning script with MLflow and S3 integrations
+│   ├── mlflow-values.yml           # Helm values for Self-Hosted MLflow (S3, CORS, PostgreSQL)
+│   └── vllm-service-monitor.yml    # Prometheus ServiceMonitor for scraping vLLM metrics
+├── terraform/                      # Infrastructure-as-Code definitions
+│   ├── kubernetes.tf               # Managed Kubernetes (MK8s) cluster and GPU/CPU node pools
+│   ├── network.tf                  # VPC, subnets, and routing
+│   ├── providers.tf                # Nebius provider configuration
+│   ├── s3-storage.tf               # Object Storage buckets and IAM service accounts
+│   ├── terraform.tf                # Terraform versions and backend
+│   └── vars.tf                     # Input variables (Region, project IDs, machine types)
+├── load_test.sh                    # Stress-testing script comparing base vs. adapter latency
+└── upload_grafana_dashboards.sh    # Bash script leveraging Grafana API to provision dashboards
 ```
 
 ---
@@ -211,7 +228,7 @@ kubectl apply -f k8s/app
 Wait until the vLLM pod is in `Running` state and the base model is warmed in VRAM:
 
 ```bash
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=vllm --timeout=600s
+kubectl wait --for=condition=Ready pod -l app=vllm --timeout=600s
 ```
 
 To view metrics from deployed vLLM service in Grafana deploy vllm service monitor.
